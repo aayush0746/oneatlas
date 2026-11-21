@@ -1,0 +1,136 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lab {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  logoUrl      String?
+  websiteUrl   String?
+  description  String?
+  headquarters String?
+  foundedYear  Int?
+  models       Model[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([slug])
+}
+
+model Provider {
+  id           String                 @id @default(cuid())
+  slug         String                 @unique
+  name         String
+  logoUrl      String?
+  websiteUrl   String?
+  description  String?
+  isAggregator Boolean                @default(false)
+  models       ModelProviderPricing[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([slug])
+}
+
+model Model {
+  id                       String                 @id @default(cuid())
+  slug                     String                 @unique
+  name                     String
+  shortName                String?
+  description              String
+  labId                    String
+  lab                      Lab                    @relation(fields: [labId], references: [id], onDelete: Cascade)
+  releaseDate              DateTime
+  contextLength            Int                    // Maximum context window (e.g., 128000, 1000000)
+  maxOutputTokens          Int?                   // Maximum generation tokens
+  inputPricePerMillion     Float                  // Cost in USD per 1M tokens
+  outputPricePerMillion    Float                  // Cost in USD per 1M tokens
+  cacheReadPricePerMillion Float?                 // Prompt caching read price per 1M tokens
+  architecture             String?                // e.g. "Transformer MoE", "Dense Transformer"
+  parameterCount           String?                // e.g. "671B (37B active)", "70B"
+  modalities               String[]               // e.g. ["text", "image", "audio"]
+  capabilities             String[]               // e.g. ["function_calling", "json_mode", "reasoning", "vision"]
+  licenseType              String                 // e.g. "Open Weights (Apache 2.0)", "Proprietary"
+  isOpenSource             Boolean                @default(false)
+  isFeatured               Boolean                @default(false)
+  isNew                    Boolean                @default(false)
+  ratingScore              Float?                 @default(0) // composite 0-100 rating
+  
+  // Latency & Speed metrics
+  typicalThroughputTps     Float?                 // Tokens per second
+  typicalTtftMs            Int?                   // Time to first token in ms
+
+  // Relations
+  benchmarkScores          ModelBenchmarkScore[]
+  providerPricings         ModelProviderPricing[]
+
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@index([slug])
+  @@index([labId])
+  @@index([inputPricePerMillion])
+  @@index([contextLength])
+  @@index([isOpenSource])
+}
+
+model ModelProviderPricing {
+  id                String   @id @default(cuid())
+  modelId           String
+  model             Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  providerId        String
+  provider          Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  inputPricePerM    Float
+  outputPricePerM   Float
+  throughputTps     Float?
+  latencyMs         Int?
+  isAvailable       Boolean  @default(true)
+  region            String?  @default("global")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([modelId, providerId])
+  @@index([modelId])
+  @@index([providerId])
+}
+
+model BenchmarkMetric {
+  id          String                @id @default(cuid())
+  code        String                @unique // e.g. "ARENA_ELO", "MMLU_PRO", "HUMANEVAL", "GSM8K", "GPQA_DIAMOND"
+  name        String                // e.g. "LMSYS Arena Elo", "MMLU-Pro (Reasoning)", "HumanEval (Coding)"
+  category    String                // "REASONING", "CODING", "MATH", "OVERALL", "EFFICIENCY"
+  unit        String                // "Elo", "%", "pts"
+  maxScore    Float?                // 100 for percentage benchmarks
+  description String
+  scores      ModelBenchmarkScore[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([code])
+  @@index([category])
+}
+
+model ModelBenchmarkScore {
+  id        String          @id @default(cuid())
+  modelId   String
+  model     Model           @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  metricId  String
+  metric    BenchmarkMetric @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  score     Float
+  source    String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([modelId, metricId])
+  @@index([modelId])
+  @@index([metricId])
+}
